@@ -118,13 +118,34 @@ class RibbonToolbarPlugin:
         # Restore menubar
         self.main_window.menuBar().setVisible(True)
 
+        # Check if all toolbars are false - if so, use defaults
+        all_toolbars_false = all(
+            not visible for visible in self._original_toolbar_visibility.values()
+        )
+
         # Restore toolbars
+        default_toolbars = {
+            "mFileToolBar",
+            "mDigitizeToolBar",
+            "mMapNavToolBar",
+            "mAttributesToolBar",
+            "mPluginToolBar",
+            "mSnappingToolBar",
+            "mDataSourceManagerToolBar",
+            "mShapeDigitizeToolBar",
+            "mSelectionToolBar",
+        }
         for tb in self.main_window.findChildren(QToolBar):
             if tb.parent() != self.main_window or tb.isVisible() is True:
                 continue
             name = tb.objectName()
             if name in self._original_toolbar_visibility:
-                tb.setVisible(self._original_toolbar_visibility[name])
+                if all_toolbars_false:
+                    # Show default toolbars if all were hidden
+                    tb.setVisible(name in default_toolbars)
+                else:
+                    # Otherwise restore original visibility
+                    tb.setVisible(self._original_toolbar_visibility[name])
 
         self.ribbon_active = False
         self.toggle_action.setChecked(False)
