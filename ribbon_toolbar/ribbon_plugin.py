@@ -132,7 +132,6 @@ class RibbonToolbarPlugin:
             "mPluginToolBar",
             "mSnappingToolBar",
             "mDataSourceManagerToolBar",
-            "mShapeDigitizeToolBar",
             "mSelectionToolBar",
         }
         for tb in self.main_window.findChildren(QToolBar):
