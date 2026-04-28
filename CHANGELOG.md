@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Fix plugin initialization to happen only after UI is ready
+- Add a toggle button on the menu bar corner to easily switch between ribbon and classic UI
 
 ## [0.4.2] - 2026-04-14
 

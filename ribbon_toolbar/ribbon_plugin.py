@@ -9,7 +9,7 @@ from pathlib import Path
 from qgis.core import Qgis, QgsMessageLog
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QToolBar
+from qgis.PyQt.QtWidgets import QAction, QHBoxLayout, QToolBar, QToolButton, QWidget
 
 
 class RibbonToolbarPlugin:
@@ -28,6 +28,9 @@ class RibbonToolbarPlugin:
         self._original_toolbar_visibility = {}
         self._original_menubar_visible = True
         self.plugin_dir = Path(__file__).parent
+        # Menubar corner widget
+        self._corner_widget = None
+        self._corner_layout = None
 
     def initGui(self):
         """Called when plugin is loaded."""
@@ -41,7 +44,25 @@ class RibbonToolbarPlugin:
         self.toggle_action.triggered.connect(self._on_toggle)
         self.iface.addToolBarIcon(self.toggle_action)
         self.iface.addPluginToMenu("&Ribbon Toolbar", self.toggle_action)
-        self._on_toggle(True)  # Activate ribbon by default
+
+        # Create button and corner widget for menubar
+        toggle_button = QToolButton()
+        toggle_button.setDefaultAction(self.toggle_action)
+        toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+
+        self._corner_layout = QHBoxLayout()
+        self._corner_layout.setContentsMargins(
+            0, 0, 10, 0
+        )  # 10 px margin on right side
+        self._corner_layout.addWidget(toggle_button)
+
+        self._corner_widget = QWidget()
+        self._corner_widget.setLayout(self._corner_layout)
+        self._corner_widget.show()
+        self.main_window.menuBar().setCornerWidget(
+            self._corner_widget, Qt.TopRightCorner
+        )
+        self._corner_widget.setVisible(True)
 
         # Connect to initialization completed to render ribbon
         self.iface.initializationCompleted.connect(self._on_initialization_completed)
