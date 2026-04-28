@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fix plugin initialization to happen only after UI is ready
+
 ## [0.4.2] - 2026-04-14
 
 - Release directly to QGIS plugin repository

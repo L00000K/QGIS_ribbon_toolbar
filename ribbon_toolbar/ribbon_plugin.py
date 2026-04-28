@@ -43,12 +43,40 @@ class RibbonToolbarPlugin:
         self.iface.addPluginToMenu("&Ribbon Toolbar", self.toggle_action)
         self._on_toggle(True)  # Activate ribbon by default
 
+        # Connect to initialization completed to render ribbon
+        self.iface.initializationCompleted.connect(self._on_initialization_completed)
+
     def unload(self):
         """Called when plugin is unloaded."""
         if self.ribbon_active:
             self._deactivate_ribbon()
         self.iface.removePluginMenu("&Ribbon Toolbar", self.toggle_action)
         self.iface.removeToolBarIcon(self.toggle_action)
+
+        # Disconnect initialization signal if still connected
+        try:
+            self.iface.initializationCompleted.disconnect(
+                self._on_initialization_completed
+            )
+        except TypeError:
+            pass
+
+        # Remove the toggle button from the menubar corner
+        self._corner_widget.setVisible(False)
+        menubar = self.main_window.menuBar()
+        menubar.setCornerWidget(QWidget())
+
+    def _on_initialization_completed(self):
+        """Called after QGIS initialization is complete. Activate ribbon and render UI."""
+        try:
+            self.iface.initializationCompleted.disconnect(
+                self._on_initialization_completed
+            )
+        except TypeError:
+            pass
+
+        # Activate ribbon by default after initialization
+        self._on_toggle(True)
 
     def _on_toggle(self, checked):
         if checked:
