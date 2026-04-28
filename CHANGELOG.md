@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-04-28
+
 - Fix plugin initialization to happen only after UI is ready
 - Add a toggle button on the menu bar corner to easily switch between ribbon and classic UI
+
+## [0.4.3] - 2026-04-26
+
+- Add default toolbars to show when no toolbars are set on unload
 
 ## [0.4.2] - 2026-04-14
 
