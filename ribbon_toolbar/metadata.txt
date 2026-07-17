@@ -2,7 +2,7 @@
 name=Ribbon Toolbar
 qgisMinimumVersion=3.22
 description=Replaces QGIS menus and toolbars with a Microsoft Office-like ribbon interface
-version=0.1.0
+version=0.5.0
 author=Eithan Weiss Schonberg
 email=eithan.schonberg@gmail.com
 about=This plugin hides the default QGIS menus and toolbars and replaces them with a tabbed ribbon interface similar to Microsoft Office applications. All existing actions are organized into ribbon tabs with grouped sections.
@@ -16,4 +16,5 @@ icon=icon.svg
 experimental=True
 deprecated=False
 changelog=
+    0.5.0 - Compact half-height ribbon, editable layout with Customize dialog, dynamic popup detection, theme-aware styling
     0.1.0 - Initial release

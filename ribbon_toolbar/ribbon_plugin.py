@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
 """
 Main plugin class for Ribbon Toolbar.
-Handles plugin lifecycle and toggling between ribbon and classic UI.
+Handles plugin lifecycle, toggling between ribbon and classic UI,
+rebuilding the ribbon after customization and persisting state.
 """
 
 from pathlib import Path
 
-from qgis.core import Qgis, QgsMessageLog
+from qgis.core import QgsSettings
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QHBoxLayout, QToolBar, QToolButton, QWidget
+
+from . import ribbon_config
+
+SETTINGS_ACTIVE = "ribbon_toolbar/active"
 
 
 class RibbonToolbarPlugin:
@@ -26,11 +31,9 @@ class RibbonToolbarPlugin:
         self.toggle_action = None
         # Store original visibility states for toolbars
         self._original_toolbar_visibility = {}
-        self._original_menubar_visible = True
         self.plugin_dir = Path(__file__).parent
         # Menubar corner widget
         self._corner_widget = None
-        self._corner_layout = None
 
     def initGui(self):
         """Called when plugin is loaded."""
@@ -50,15 +53,12 @@ class RibbonToolbarPlugin:
         toggle_button.setDefaultAction(self.toggle_action)
         toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
 
-        self._corner_layout = QHBoxLayout()
-        self._corner_layout.setContentsMargins(
-            0, 0, 10, 0
-        )  # 10 px margin on right side
-        self._corner_layout.addWidget(toggle_button)
+        corner_layout = QHBoxLayout()
+        corner_layout.setContentsMargins(0, 0, 10, 0)  # 10 px margin on right side
+        corner_layout.addWidget(toggle_button)
 
         self._corner_widget = QWidget()
-        self._corner_widget.setLayout(self._corner_layout)
-        self._corner_widget.show()
+        self._corner_widget.setLayout(corner_layout)
         self.main_window.menuBar().setCornerWidget(
             self._corner_widget, Qt.TopRightCorner
         )
@@ -71,8 +71,10 @@ class RibbonToolbarPlugin:
         """Called when plugin is unloaded."""
         if self.ribbon_active:
             self._deactivate_ribbon()
-        self.iface.removePluginMenu("&Ribbon Toolbar", self.toggle_action)
-        self.iface.removeToolBarIcon(self.toggle_action)
+        if self.toggle_action is not None:
+            self.iface.removePluginMenu("&Ribbon Toolbar", self.toggle_action)
+            self.iface.removeToolBarIcon(self.toggle_action)
+            self.toggle_action = None
 
         # Disconnect initialization signal if still connected
         try:
@@ -83,12 +85,13 @@ class RibbonToolbarPlugin:
             pass
 
         # Remove the toggle button from the menubar corner
-        self._corner_widget.setVisible(False)
-        menubar = self.main_window.menuBar()
-        menubar.setCornerWidget(QWidget())
+        if self._corner_widget is not None:
+            self._corner_widget.setVisible(False)
+            self.main_window.menuBar().setCornerWidget(QWidget())
+            self._corner_widget = None
 
     def _on_initialization_completed(self):
-        """Called after QGIS initialization is complete. Activate ribbon and render UI."""
+        """Called after QGIS initialization is complete."""
         try:
             self.iface.initializationCompleted.disconnect(
                 self._on_initialization_completed
@@ -96,42 +99,49 @@ class RibbonToolbarPlugin:
         except TypeError:
             pass
 
-        # Activate ribbon by default after initialization
-        self._on_toggle(True)
+        # Activate the ribbon unless the user turned it off last session
+        active = QgsSettings().value(SETTINGS_ACTIVE, True, type=bool)
+        self.toggle_action.setChecked(active)
+        if active:
+            self._activate_ribbon()
 
     def _on_toggle(self, checked):
+        QgsSettings().setValue(SETTINGS_ACTIVE, checked)
         if checked:
             self._activate_ribbon()
         else:
             self._deactivate_ribbon()
 
     def _activate_ribbon(self):
-        """Hide menus/toolbars and show the ribbon."""
+        """Hide toolbars and show the ribbon."""
         if self.ribbon_active:
             return
 
-        # Save current state
-        self._original_menubar_visible = self.main_window.menuBar().isVisible()
+        # Save current toolbar visibility so deactivation can restore it
         self._original_toolbar_visibility = {}
-        for tb in self.main_window.findChildren(QToolBar):
-            if (
-                tb.objectName() != self.RIBBON_OBJECT_NAME
-                and tb.parent() == self.main_window
-            ):
-                self._original_toolbar_visibility[tb.objectName()] = tb.isVisible()
+        for tb in self._main_window_toolbars():
+            self._original_toolbar_visibility[tb.objectName()] = tb.isVisible()
 
-        QgsMessageLog.logMessage(
-            str(self._original_toolbar_visibility).replace(",", ",\n"),
-            "Ribbon Toolbar",
-            level=Qgis.Info,
-        )
+        self._create_ribbon()
+        self._hide_main_toolbars()
+        self.ribbon_active = True
 
-        # Build the ribbon
+    def rebuild_ribbon(self):
+        """Rebuild the ribbon in place (after customize/refresh)."""
+        if not self.ribbon_active:
+            return
+        self._destroy_ribbon()
+        self._create_ribbon()
+        self._hide_main_toolbars()
+
+    def _create_ribbon(self):
         from .ribbon_widget import RibbonWidget
 
-        self.ribbon_widget = RibbonWidget(self.iface, self.main_window)
+        layout_cfg = ribbon_config.load_layout()
+        self.ribbon_widget = RibbonWidget(self.iface, layout_cfg, self.main_window)
+        self.ribbon_widget.customizeRequested.connect(self._open_customize)
+        self.ribbon_widget.refreshRequested.connect(self.rebuild_ribbon)
 
-        # Create the hosting toolbar
         self.ribbon_toolbar = QToolBar("Ribbon", self.main_window)
         self.ribbon_toolbar.setObjectName(self.RIBBON_OBJECT_NAME)
         self.ribbon_toolbar.setMovable(False)
@@ -142,37 +152,57 @@ class RibbonToolbarPlugin:
         self.ribbon_toolbar.addWidget(self.ribbon_widget)
         self.main_window.addToolBar(Qt.TopToolBarArea, self.ribbon_toolbar)
 
-        # Hide toolbars docked to the main window only (not toolbars inside panels)
-        for tb in self.main_window.findChildren(QToolBar):
-            if (
-                tb.objectName() != self.RIBBON_OBJECT_NAME
-                and tb.parent() == self.main_window
-            ):
-                tb.setVisible(False)
+    def _destroy_ribbon(self):
+        if self.ribbon_toolbar is None:
+            return
+        if self.ribbon_widget is not None:
+            self.ribbon_widget.teardown()
+        self.main_window.removeToolBar(self.ribbon_toolbar)
+        self.ribbon_toolbar.deleteLater()
+        self.ribbon_toolbar = None
+        self.ribbon_widget = None
 
-        self.ribbon_active = True
+    def _main_window_toolbars(self):
+        """Toolbars docked to the main window, excluding the ribbon."""
+        return [
+            tb
+            for tb in self.main_window.findChildren(QToolBar)
+            if tb.objectName() != self.RIBBON_OBJECT_NAME
+            and tb.parent() == self.main_window
+        ]
+
+    def _hide_main_toolbars(self):
+        for tb in self._main_window_toolbars():
+            # Record toolbars that appeared after activation (late-loaded
+            # plugins) so deactivation can restore them too
+            self._original_toolbar_visibility.setdefault(
+                tb.objectName(), tb.isVisible()
+            )
+            tb.setVisible(False)
+
+    def _open_customize(self):
+        from .customize_dialog import CustomizeDialog
+
+        dialog = CustomizeDialog(ribbon_config.load_layout(), self.main_window)
+        if dialog.exec():
+            ribbon_config.save_layout(dialog.result_layout())
+            self.rebuild_ribbon()
 
     def _deactivate_ribbon(self):
-        """Restore menus/toolbars and remove the ribbon."""
+        """Restore toolbars and remove the ribbon."""
         if not self.ribbon_active:
             return
 
-        # Remove ribbon
-        if self.ribbon_toolbar:
-            self.main_window.removeToolBar(self.ribbon_toolbar)
-            self.ribbon_toolbar.deleteLater()
-            self.ribbon_toolbar = None
-            self.ribbon_widget = None
+        self._destroy_ribbon()
 
         # Restore menubar
         self.main_window.menuBar().setVisible(True)
 
-        # Check if all toolbars are false - if so, use defaults
-        all_toolbars_false = all(
+        # If every toolbar was hidden before activation, fall back to a
+        # sensible default set instead of restoring an empty UI
+        all_toolbars_hidden = all(
             not visible for visible in self._original_toolbar_visibility.values()
         )
-
-        # Restore toolbars
         default_toolbars = {
             "mFileToolBar",
             "mDigitizeToolBar",
@@ -183,17 +213,16 @@ class RibbonToolbarPlugin:
             "mDataSourceManagerToolBar",
             "mSelectionToolBar",
         }
-        for tb in self.main_window.findChildren(QToolBar):
-            if tb.parent() != self.main_window or tb.isVisible() is True:
+        for tb in self._main_window_toolbars():
+            if tb.isVisible():
                 continue
             name = tb.objectName()
-            if name in self._original_toolbar_visibility:
-                if all_toolbars_false:
-                    # Show default toolbars if all were hidden
-                    tb.setVisible(name in default_toolbars)
-                else:
-                    # Otherwise restore original visibility
-                    tb.setVisible(self._original_toolbar_visibility[name])
+            if name not in self._original_toolbar_visibility:
+                continue
+            if all_toolbars_hidden:
+                tb.setVisible(name in default_toolbars)
+            else:
+                tb.setVisible(self._original_toolbar_visibility[name])
 
         self.ribbon_active = False
         self.toggle_action.setChecked(False)

@@ -8,17 +8,27 @@ A QGIS plugin that replaces the default menus and toolbars with a Microsoft Offi
 ![QGIS screenshot](screenshot.png)
 ## Features
 
-- Tabbed ribbon interface organized by QGIS function category
-- Groups derived directly from QGIS native menus and toolbars — no hardcoded action lists
-- Large-icon primary groups for frequently used toolbars (File, Navigation, Digitize, etc.)
-- Small-icon grid layout for secondary groups
-- Dedicated "Tools" tab for Snapping, Labels, Selection and Annotation toolbars
+- Compact tabbed ribbon organized by QGIS function category — roughly half the height of a stacked classic toolbar setup
+- Groups derived live from QGIS native menus and toolbars — no hardcoded action lists
+- Buttons size to their content, so labels are never cut off; actions with submenus become dropdown buttons automatically
+- Fully editable layout: tab order, group order, per-group labels, hidden actions and sizing
+- Dedicated "Tools" tab for Snapping, Labels, Annotation, GPS and Bookmark toolbars
 - Third-party plugin toolbars collected automatically under the Plugins tab
-- One-click toggle to switch back to the classic QGIS interface
+- Theme-aware styling that follows the active QGIS color scheme (including dark themes)
+- One-click toggle to switch back to the classic QGIS interface; the choice is remembered between sessions
 
 ## Usage
 
-After installation a **Toggle Ribbon Toolbar** button appears in the QGIS toolbar. Click it to activate the ribbon. Click again to restore the classic interface.
+After installation a **Toggle Ribbon Toolbar** button appears in the QGIS toolbar and on the menubar corner. Click it to activate the ribbon. Click again to restore the classic interface.
+
+## Customizing the layout
+
+Open the gear menu at the top-right corner of the ribbon:
+
+- **Customize Ribbon…** — reorder tabs and groups, show/hide tabs, groups and individual actions, toggle per-group text labels, and set button rows (1–3), icon size and group titles. **Restore Defaults** brings back the built-in layout.
+- **Refresh Ribbon** — rebuild the ribbon so toolbars added by late-loading plugins appear.
+
+The layout is stored as JSON at `<QGIS profile>/ribbon_toolbar/layout.json` and can also be edited by hand; invalid files fall back to the default layout.
 
 
 

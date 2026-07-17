@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-17
+
+### Changed
+- Compact redesign: ribbon height roughly halved (small buttons in up to
+  three configurable rows instead of 70 px fixed-size icon buttons)
+- Buttons size to their content — labels are never truncated
+- Actions with submenus become dropdown buttons automatically, replacing
+  the hardcoded, locale-dependent popup lists
+- Ribbon colors derive from the application palette, so dark QGIS themes
+  are supported
+
+### Added
+- Editable layout: tab order, groups, per-group label style, hidden
+  actions and sizing are stored as JSON in the QGIS profile
+  (`ribbon_toolbar/layout.json`)
+- "Customize Ribbon…" dialog (gear menu on the ribbon) with visibility
+  checkboxes, reordering and global options, plus "Restore Defaults"
+- "Refresh Ribbon" action to pick up toolbars from late-loading plugins
+- Ribbon on/off state is remembered between sessions
+
+### Fixed
+- Cloned toolbar buttons now share the original action where possible, so
+  enabled/checked state stays in sync
+- Safer plugin unload when initialization failed partway
+
 ## [0.4.4] - 2026-04-28
 
 - Fix plugin initialization to happen only after UI is ready
