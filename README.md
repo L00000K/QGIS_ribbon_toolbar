@@ -14,7 +14,7 @@ A QGIS plugin that replaces the default menus and toolbars with a Microsoft Offi
 - Fully editable layout: tab order, group order, per-group labels, hidden actions and sizing
 - Workflow-based grouping: Snapping and Annotations live on the Edit tab, Bookmarks and GPS on View, Labels on Layer
 - Third-party plugin toolbars collected automatically under the Plugins tab
-- Theme-aware styling that follows the active QGIS color scheme (including dark themes)
+- Flat, ArcGIS Pro-style look: underlined active tab, vertical group dividers, captions under each group — colors follow the active QGIS theme (including dark themes)
 - One-click toggle to switch back to the classic QGIS interface; the choice is remembered between sessions
 
 ## Usage

@@ -90,13 +90,16 @@ def default_layout():
             "version": CONFIG_VERSION,
             "rows": 2,
             "icon_size": 16,
-            "show_group_titles": False,
+            "show_group_titles": True,
             "tabs": [
                 _tab(
                     "project",
                     "Project",
                     "mProjectMenu",
-                    [_toolbar("mFileToolBar", labels=True), _menu("mProjectMenu")],
+                    [
+                        _toolbar("mFileToolBar", labels=True, title="File"),
+                        _menu("mProjectMenu"),
+                    ],
                 ),
                 _tab(
                     "edit",
@@ -268,7 +271,7 @@ def normalize_layout(layout):
         "version": CONFIG_VERSION,
         "rows": _clamp(layout.get("rows"), 1, 3, default["rows"]),
         "icon_size": _clamp(layout.get("icon_size"), 12, 48, default["icon_size"]),
-        "show_group_titles": bool(layout.get("show_group_titles", False)),
+        "show_group_titles": bool(layout.get("show_group_titles", True)),
         "tabs": normalized_tabs,
     }
 

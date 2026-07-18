@@ -117,7 +117,7 @@ class CustomizeDialog(QDialog):
         self.tree.clear()
         self.rows_spin.setValue(layout_cfg.get("rows", 2))
         self.icon_spin.setValue(layout_cfg.get("icon_size", 16))
-        self.titles_check.setChecked(layout_cfg.get("show_group_titles", False))
+        self.titles_check.setChecked(layout_cfg.get("show_group_titles", True))
 
         toolbars = collect_toolbars(self._main_window)
         menus = collect_menus(self._main_window)

@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Buttons size to their content — labels are never truncated
 - Actions with submenus become dropdown buttons automatically, replacing
   the hardcoded, locale-dependent popup lists
+- Flat, ArcGIS Pro-style chrome: underlined active tab, vertical
+  dividers between groups, and muted group captions below each group
 - Ribbon colors derive from the application palette, so dark QGIS themes
   are supported
 - Workflow-based default grouping: Snapping and Annotations moved to the

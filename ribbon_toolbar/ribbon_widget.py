@@ -73,11 +73,20 @@ def referenced_toolbars(layout_cfg):
     return names
 
 
+def _strip_toolbar_suffix(title):
+    """'Digitizing Toolbar' -> 'Digitizing' for compact group captions."""
+    if title.lower().endswith(" toolbar"):
+        return title[: -len(" toolbar")].strip()
+    return title
+
+
 def _resolve_toolbar_group(group_cfg, toolbars):
     tb = toolbars.get(group_cfg.get("source"))
     if tb is None or not tb.actions():
         return []
-    title = group_cfg.get("title") or clean_text(tb.windowTitle()) or tb.objectName()
+    title = group_cfg.get("title") or _strip_toolbar_suffix(
+        clean_text(tb.windowTitle())
+    ) or tb.objectName()
     return [{"title": title, "name": tb.objectName(), "actions": tb.actions()}]
 
 
@@ -154,7 +163,7 @@ class RibbonWidget(QTabWidget):
         self.rows = layout_cfg.get("rows", 2)
         self.icon_px = layout_cfg.get("icon_size", 16)
         self.btn_height = self.icon_px + 6
-        self.show_titles = layout_cfg.get("show_group_titles", False)
+        self.show_titles = layout_cfg.get("show_group_titles", True)
         # Connections to long-lived QGIS objects, released in teardown()
         self._connections = []
         self.setStyleSheet(self._build_stylesheet())
@@ -382,50 +391,67 @@ class RibbonWidget(QTabWidget):
         self.setFixedHeight(self.tabBar().sizeHint().height() + content + 4)
 
     def _build_stylesheet(self):
-        """Derive the ribbon chrome from the application palette."""
+        """Flat, ArcGIS Pro-like chrome derived from the app palette:
+        underlined active tab, vertical group dividers, muted captions."""
+
+        def rgba(color, alpha):
+            return "rgba({}, {}, {}, {})".format(
+                color.red(), color.green(), color.blue(), alpha
+            )
+
         pal = self.palette()
         window = pal.color(QPalette.Window).name()
-        base = pal.color(QPalette.Base).name()
-        text = pal.color(QPalette.WindowText).name()
-        mid = pal.color(QPalette.Mid).name()
+        text = pal.color(QPalette.WindowText)
+        mid = pal.color(QPalette.Mid)
         highlight = pal.color(QPalette.Highlight)
-        hover = "rgba({}, {}, {}, 40)".format(
-            highlight.red(), highlight.green(), highlight.blue()
-        )
         return """
             QTabWidget::pane {{
-                border: 1px solid {mid};
-                background: {base};
+                border: none;
+                border-top: 1px solid {divider};
+                background: {window};
                 margin: 0px;
             }}
             QTabWidget::tab-bar {{ alignment: left; }}
+            QTabBar {{ background: transparent; }}
             QTabBar::tab {{
-                background: {window};
-                color: {text};
-                border: 1px solid {mid};
-                border-bottom: none;
-                padding: 2px 10px;
-                margin-right: 1px;
+                background: transparent;
+                border: none;
+                border-bottom: 2px solid transparent;
+                padding: 3px 12px;
+                margin: 0px;
                 font-size: 11px;
+                color: {text};
             }}
             QTabBar::tab:selected {{
-                background: {base};
-                color: {selected};
+                color: {accent};
+                border-bottom: 2px solid {accent};
                 font-weight: 600;
             }}
-            QTabBar::tab:hover:!selected {{ background: {hover}; }}
+            QTabBar::tab:hover:!selected {{ color: {accent}; }}
             QFrame#ribbonGroup {{
                 border: none;
-                border-right: 1px solid {mid};
+                border-right: 1px solid {divider};
                 background: transparent;
             }}
-            QLabel#ribbonGroupTitle {{ color: {mid}; font-size: 9px; }}
-            QToolButton {{ padding: 1px 3px; }}
+            QLabel#ribbonGroupTitle {{
+                color: {caption};
+                font-size: 9px;
+                padding: 0px 4px;
+            }}
+            QToolButton {{
+                border: none;
+                border-radius: 2px;
+                padding: 1px 3px;
+                background: transparent;
+            }}
+            QToolButton:hover {{ background: {hover}; }}
+            QToolButton:pressed, QToolButton:checked {{ background: {pressed}; }}
         """.format(
-            mid=mid,
-            base=base,
             window=window,
-            text=text,
-            selected=highlight.name(),
-            hover=hover,
+            text=text.name(),
+            accent=highlight.name(),
+            divider=rgba(mid, 110),
+            caption=rgba(text, 150),
+            hover=rgba(highlight, 28),
+            pressed=rgba(highlight, 55),
         )
