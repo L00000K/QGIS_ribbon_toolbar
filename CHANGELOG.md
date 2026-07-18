@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the hardcoded, locale-dependent popup lists
 - Ribbon colors derive from the application palette, so dark QGIS themes
   are supported
+- Workflow-based default grouping: Snapping and Annotations moved to the
+  Edit tab, Bookmarks and GPS to View, Labels to Layer; the "Tools"
+  catch-all tab is gone
 
 ### Added
 - Editable layout: tab order, groups, per-group label style, hidden

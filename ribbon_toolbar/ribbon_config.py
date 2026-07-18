@@ -106,6 +106,8 @@ def default_layout():
                         _toolbar("mDigitizeToolBar"),
                         _toolbar("mAdvancedDigitizeToolBar"),
                         _toolbar("mShapeDigitizeToolBar"),
+                        _toolbar("mSnappingToolBar", title="Snapping"),
+                        _toolbar("mAnnotationsToolBar", title="Annotations"),
                         _menu("mEditMenu"),
                     ],
                 ),
@@ -125,6 +127,8 @@ def default_layout():
                     [
                         _toolbar("mMapNavToolBar"),
                         _toolbar("mAttributesToolBar"),
+                        _toolbar("mBookmarkToolbar", title="Bookmarks"),
+                        _toolbar("mGpsToolBar", title="GPS"),
                         _menu("mViewMenu"),
                     ],
                 ),
@@ -135,6 +139,7 @@ def default_layout():
                     [
                         _toolbar("mDataSourceManagerToolBar", labels=True),
                         _toolbar("mLayerToolBar"),
+                        _toolbar("mLabelToolBar", title="Labels"),
                         _menu("mLayerMenu"),
                     ],
                 ),
@@ -190,18 +195,6 @@ def default_layout():
                     "Help",
                     "mHelpMenu",
                     [_toolbar("mHelpToolBar"), _menu("mHelpMenu")],
-                ),
-                _tab(
-                    "tools",
-                    "Tools",
-                    None,
-                    [
-                        _toolbar("mSnappingToolBar", title="Snapping"),
-                        _toolbar("mLabelToolBar", title="Labels"),
-                        _toolbar("mAnnotationsToolBar", title="Annotations"),
-                        _toolbar("mGpsToolBar", title="GPS"),
-                        _toolbar("mBookmarkToolbar", title="Bookmarks"),
-                    ],
                 ),
             ],
         }
