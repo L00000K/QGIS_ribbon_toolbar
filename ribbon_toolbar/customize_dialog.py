@@ -94,6 +94,8 @@ class CustomizeDialog(QDialog):
         opts_row.addWidget(self.icon_spin)
         self.titles_check = QCheckBox("Show group titles")
         opts_row.addWidget(self.titles_check)
+        self.adaptive_check = QCheckBox("Adaptive (collapse groups when narrow)")
+        opts_row.addWidget(self.adaptive_check)
         opts_row.addStretch()
         vbox.addLayout(opts_row)
 
@@ -118,6 +120,7 @@ class CustomizeDialog(QDialog):
         self.rows_spin.setValue(layout_cfg.get("rows", 2))
         self.icon_spin.setValue(layout_cfg.get("icon_size", 16))
         self.titles_check.setChecked(layout_cfg.get("show_group_titles", True))
+        self.adaptive_check.setChecked(layout_cfg.get("adaptive", True))
 
         toolbars = collect_toolbars(self._main_window)
         menus = collect_menus(self._main_window)
@@ -231,6 +234,7 @@ class CustomizeDialog(QDialog):
             "rows": self.rows_spin.value(),
             "icon_size": self.icon_spin.value(),
             "show_group_titles": self.titles_check.isChecked(),
+            "adaptive": self.adaptive_check.isChecked(),
             "tabs": tabs,
         }
 

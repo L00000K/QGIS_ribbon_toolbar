@@ -13,7 +13,7 @@ ribbon follows the active QGIS theme.
 import re
 
 from qgis.PyQt import sip
-from qgis.PyQt.QtCore import QSize, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QSize, Qt, QTimer, pyqtSignal
 from qgis.PyQt.QtGui import QPalette
 from qgis.PyQt.QtWidgets import (
     QFrame,
@@ -149,6 +149,138 @@ def resolve_groups(group_cfg, toolbars, menus, layout_cfg):
     return []
 
 
+class OverflowPopup(QWidget):
+    """A borderless popup that hosts collapsed ribbon group frames.
+
+    The frames are owned by the AdaptiveTab; the popup only borrows them
+    into its layout while open and hands them back when it closes, so no
+    widget ownership is ever transferred."""
+
+    def __init__(self, parent):
+        super().__init__(parent, Qt.Popup)
+        self.setObjectName("ribbonOverflow")
+        self._hbox = QHBoxLayout(self)
+        self._hbox.setContentsMargins(3, 3, 3, 3)
+        self._hbox.setSpacing(2)
+        self._frames = []
+
+    def show_frames(self, frames, global_pos):
+        self._frames = frames
+        for frame in frames:
+            self._hbox.addWidget(frame)
+            frame.show()
+        self.adjustSize()
+        self.move(global_pos)
+        self.show()
+
+    def hideEvent(self, event):
+        # Return the borrowed frames to the tab (detached + hidden).
+        for frame in self._frames:
+            self._hbox.removeWidget(frame)
+            frame.setParent(self.parent())
+            frame.hide()
+        self._frames = []
+        super().hideEvent(event)
+
+
+class AdaptiveTab(QWidget):
+    """Holds a row of ribbon group frames and, when they no longer fit the
+    available width, collapses the rightmost ones into an overflow dropdown
+    (Office / ArcGIS Pro style). Groups expand back as the tab widens."""
+
+    def __init__(self, frames, spacing=2, parent=None):
+        super().__init__(parent)
+        self._frames = frames
+        self._overflow_frames = []
+        self._visible_count = -1
+        self._hbox = QHBoxLayout(self)
+        self._hbox.setContentsMargins(2, 1, 2, 1)
+        self._hbox.setSpacing(spacing)
+
+        self._overflow = QToolButton(self)
+        self._overflow.setAutoRaise(True)
+        self._overflow.setFocusPolicy(Qt.NoFocus)
+        self._overflow.setText("»")
+        self._overflow.setToolTip("More groups")
+        self._overflow.clicked.connect(self._show_overflow)
+
+        self._popup = OverflowPopup(self)
+
+        for frame in self._frames:
+            frame.setParent(self)
+            self._hbox.addWidget(frame)
+        self._hbox.addStretch()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Defer until geometry is valid so widths are meaningful.
+        QTimer.singleShot(0, self._relayout)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._relayout()
+
+    def _relayout(self):
+        if not self._frames:
+            return
+        margins = self._hbox.contentsMargins()
+        spacing = self._hbox.spacing()
+        avail = self.width() - margins.left() - margins.right()
+
+        widths = [f.sizeHint().width() for f in self._frames]
+        full = sum(widths) + spacing * (len(widths) - 1)
+        if full <= avail:
+            fit = len(self._frames)
+        else:
+            budget = avail - self._overflow.sizeHint().width() - spacing
+            total = 0
+            fit = 0
+            for i, w in enumerate(widths):
+                step = w + (spacing if i else 0)
+                if total + step <= budget:
+                    total += step
+                    fit += 1
+                else:
+                    break
+        if fit != self._visible_count:
+            self._visible_count = fit
+            self._apply(fit)
+
+    def _apply(self, fit):
+        if self._popup.isVisible():
+            self._popup.hide()
+
+        while self._hbox.count():
+            item = self._hbox.takeAt(0)
+            widget = item.widget()
+            if widget is not None and widget is not self._overflow:
+                widget.setParent(self)
+
+        for frame in self._frames[:fit]:
+            self._hbox.addWidget(frame)
+            frame.show()
+
+        self._overflow_frames = self._frames[fit:]
+        for frame in self._overflow_frames:
+            frame.setParent(self)
+            frame.hide()
+
+        if self._overflow_frames:
+            self._hbox.addWidget(self._overflow)
+            self._overflow.show()
+        else:
+            self._overflow.hide()
+        self._hbox.addStretch()
+
+    def _show_overflow(self):
+        if not self._overflow_frames:
+            return
+        below = self._overflow.mapToGlobal(
+            self._overflow.rect().bottomLeft()
+        )
+        self._popup.show_frames(self._overflow_frames, below)
+
+
 class RibbonWidget(QTabWidget):
     """Compact, configurable ribbon interface for QGIS."""
 
@@ -164,6 +296,7 @@ class RibbonWidget(QTabWidget):
         self.icon_px = layout_cfg.get("icon_size", 16)
         self.btn_height = self.icon_px + 6
         self.show_titles = layout_cfg.get("show_group_titles", True)
+        self.adaptive = layout_cfg.get("adaptive", True)
         # Connections to long-lived QGIS objects, released in teardown()
         self._connections = []
         self.setStyleSheet(self._build_stylesheet())
@@ -203,13 +336,8 @@ class RibbonWidget(QTabWidget):
         return tab_cfg.get("title") or tab_cfg.get("id", "")
 
     def _build_tab(self, tab_cfg, toolbars, menus):
-        container = QWidget()
-        hbox = QHBoxLayout(container)
-        hbox.setContentsMargins(2, 1, 2, 1)
-        hbox.setSpacing(2)
-
         seen_ids = set()
-        added = False
+        frames = []
         for group_cfg in tab_cfg.get("groups", []):
             if not group_cfg.get("visible", True):
                 continue
@@ -217,14 +345,25 @@ class RibbonWidget(QTabWidget):
                 actions = self._filter_actions(resolved["actions"], group_cfg, seen_ids)
                 if not any(not a.isSeparator() for a in actions):
                     continue
-                frame = self._create_group(
-                    resolved["title"], actions, group_cfg.get("labels", False)
+                frames.append(
+                    self._create_group(
+                        resolved["title"], actions, group_cfg.get("labels", False)
+                    )
                 )
-                hbox.addWidget(frame)
-                added = True
 
-        if not added:
+        if not frames:
             return None
+
+        if self.adaptive:
+            return AdaptiveTab(frames)
+
+        # Non-adaptive fallback: a horizontally scrolling row.
+        container = QWidget()
+        hbox = QHBoxLayout(container)
+        hbox.setContentsMargins(2, 1, 2, 1)
+        hbox.setSpacing(2)
+        for frame in frames:
+            hbox.addWidget(frame)
         hbox.addStretch()
 
         scroll = QScrollArea()

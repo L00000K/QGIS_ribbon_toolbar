@@ -11,6 +11,7 @@ A QGIS plugin that replaces the default menus and toolbars with a Microsoft Offi
 - Compact tabbed ribbon organized by QGIS function category — roughly half the height of a stacked classic toolbar setup
 - Groups derived live from QGIS native menus and toolbars — no hardcoded action lists
 - Buttons size to their content, so labels are never cut off; actions with submenus become dropdown buttons automatically
+- Adaptive layout: groups that don't fit the window collapse into an overflow (») dropdown and expand back as the window widens (Office / ArcGIS Pro style)
 - Fully editable layout: tab order, group order, per-group labels, hidden actions and sizing
 - Workflow-based grouping: Snapping and Annotations live on the Edit tab, Bookmarks and GPS on View, Labels on Layer
 - Third-party plugin toolbars collected automatically under the Plugins tab
@@ -25,7 +26,7 @@ After installation a **Toggle Ribbon Toolbar** button appears in the QGIS toolba
 
 Open the gear menu at the top-right corner of the ribbon:
 
-- **Customize Ribbon…** — reorder tabs and groups, show/hide tabs, groups and individual actions, toggle per-group text labels, and set button rows (1–3), icon size and group titles. **Restore Defaults** brings back the built-in layout.
+- **Customize Ribbon…** — reorder tabs and groups, show/hide tabs, groups and individual actions, toggle per-group text labels, and set button rows (1–3), icon size, group titles and adaptive collapsing. **Restore Defaults** brings back the built-in layout.
 - **Refresh Ribbon** — rebuild the ribbon so toolbars added by late-loading plugins appear.
 
 The layout is stored as JSON at `<QGIS profile>/ribbon_toolbar/layout.json` and can also be edited by hand; invalid files fall back to the default layout.
