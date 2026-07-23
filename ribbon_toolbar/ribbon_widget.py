@@ -149,6 +149,72 @@ def resolve_groups(group_cfg, toolbars, menus, layout_cfg):
     return []
 
 
+class RibbonGroup(QFrame):
+    """A framed ribbon group whose buttons can be reflowed between 1 and N
+    rows without rebuilding them. Reflowing lets the ribbon trade height
+    for width: one row is short and wide, more rows are tall and narrow."""
+
+    H_MARGIN = 3
+    V_MARGIN = 1
+    GRID_SPACING = 1
+
+    def __init__(self, title, show_title, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ribbonGroup")
+        self._buttons = []
+        self._widths = []
+        self._rows = 0
+
+        vbox = QVBoxLayout(self)
+        vbox.setContentsMargins(
+            self.H_MARGIN, self.V_MARGIN, self.H_MARGIN, self.V_MARGIN
+        )
+        vbox.setSpacing(0)
+        self._grid = QGridLayout()
+        self._grid.setSpacing(self.GRID_SPACING)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        vbox.addLayout(self._grid)
+        vbox.addStretch()
+
+        self._caption_w = 0
+        if show_title:
+            label = QLabel(title)
+            label.setObjectName("ribbonGroupTitle")
+            label.setAlignment(Qt.AlignCenter)
+            vbox.addWidget(label)
+            self._caption_w = label.sizeHint().width()
+
+    def add_button(self, btn):
+        self._buttons.append(btn)
+        self._widths.append(btn.sizeHint().width())
+
+    def reflow(self, rows):
+        rows = max(1, rows)
+        if rows == self._rows or not self._buttons:
+            if rows == self._rows:
+                return
+        while self._grid.count():
+            self._grid.takeAt(0)
+        for i, btn in enumerate(self._buttons):
+            self._grid.addWidget(btn, i % rows, i // rows)
+        self._rows = rows
+
+    def width_at(self, rows):
+        """Predicted frame width at ``rows`` rows, from stored button widths."""
+        rows = max(1, rows)
+        n = len(self._widths)
+        pad = 2 * self.H_MARGIN
+        if n == 0:
+            return self._caption_w + pad
+        ncols = -(-n // rows)  # ceil division
+        total = 0
+        for c in range(ncols):
+            col = self._widths[c * rows : (c + 1) * rows]
+            total += max(col)
+        total += self.GRID_SPACING * (ncols - 1) + pad
+        return max(total, self._caption_w + pad)
+
+
 class OverflowPopup(QWidget):
     """A borderless popup that hosts collapsed ribbon group frames.
 
@@ -188,11 +254,15 @@ class AdaptiveTab(QWidget):
     available width, collapses the rightmost ones into an overflow dropdown
     (Office / ArcGIS Pro style). Groups expand back as the tab widens."""
 
-    def __init__(self, frames, spacing=2, parent=None):
+    def __init__(self, frames, spacing=2, spread=True, parent=None):
         super().__init__(parent)
         self._frames = frames
+        self._spread = spread
         self._overflow_frames = []
         self._visible_count = -1
+        # Force a re-apply whenever the row count (and thus group widths)
+        # changed, even if the same number of groups still fit.
+        self._dirty = False
         self._hbox = QHBoxLayout(self)
         self._hbox.setContentsMargins(2, 1, 2, 1)
         self._hbox.setSpacing(spacing)
@@ -242,9 +312,14 @@ class AdaptiveTab(QWidget):
                     fit += 1
                 else:
                     break
-        if fit != self._visible_count:
+        if fit != self._visible_count or self._dirty:
             self._visible_count = fit
+            self._dirty = False
             self._apply(fit)
+
+    def mark_dirty(self):
+        """Flag that group widths changed, forcing the next relayout."""
+        self._dirty = True
 
     def _apply(self, fit):
         if self._popup.isVisible():
@@ -256,21 +331,31 @@ class AdaptiveTab(QWidget):
             if widget is not None and widget is not self._overflow:
                 widget.setParent(self)
 
-        for frame in self._frames[:fit]:
-            self._hbox.addWidget(frame)
-            frame.show()
-
         self._overflow_frames = self._frames[fit:]
         for frame in self._overflow_frames:
             frame.setParent(self)
             frame.hide()
 
+        visible = self._frames[:fit]
         if self._overflow_frames:
+            # Too narrow: pack groups left, then the overflow button.
+            for frame in visible:
+                self._hbox.addWidget(frame)
+                frame.show()
             self._hbox.addWidget(self._overflow)
             self._overflow.show()
+            self._hbox.addStretch()
         else:
             self._overflow.hide()
-        self._hbox.addStretch()
+            # Everything fits: spread groups across the full width so a
+            # wide screen is used, instead of bunching them on the left.
+            for i, frame in enumerate(visible):
+                if self._spread and i > 0:
+                    self._hbox.addStretch()
+                self._hbox.addWidget(frame)
+                frame.show()
+            if not self._spread or len(visible) <= 1:
+                self._hbox.addStretch()
 
     def _show_overflow(self):
         if not self._overflow_frames:
@@ -292,11 +377,17 @@ class RibbonWidget(QTabWidget):
         self.iface = iface
         self.main_window = iface.mainWindow()
         self.layout_cfg = layout_cfg
-        self.rows = layout_cfg.get("rows", 2)
+        self.max_rows = layout_cfg.get("rows", 2)
         self.icon_px = layout_cfg.get("icon_size", 16)
         self.btn_height = self.icon_px + 6
         self.show_titles = layout_cfg.get("show_group_titles", True)
         self.adaptive = layout_cfg.get("adaptive", True)
+        self.auto_rows = layout_cfg.get("auto_rows", True)
+        self.spread = layout_cfg.get("spread", True)
+        # Current row count; auto_rows flattens this on wide screens.
+        self._cur_rows = 1 if self.auto_rows else self.max_rows
+        # Group frames grouped per tab, for the auto-rows calculation.
+        self._tab_group_lists = []
         # Connections to long-lived QGIS objects, released in teardown()
         self._connections = []
         self.setStyleSheet(self._build_stylesheet())
@@ -354,8 +445,9 @@ class RibbonWidget(QTabWidget):
         if not frames:
             return None
 
+        self._tab_group_lists.append(frames)
         if self.adaptive:
-            return AdaptiveTab(frames)
+            return AdaptiveTab(frames, spread=self.spread)
 
         # Non-adaptive fallback: a horizontally scrolling row.
         container = QWidget()
@@ -389,42 +481,20 @@ class RibbonWidget(QTabWidget):
         return kept
 
     def _create_group(self, title, actions, labels):
-        """A framed ribbon group: a button grid plus an optional title."""
-        frame = QFrame()
-        frame.setObjectName("ribbonGroup")
-
-        vbox = QVBoxLayout(frame)
-        vbox.setContentsMargins(3, 1, 3, 1)
-        vbox.setSpacing(0)
-
-        grid = QGridLayout()
-        grid.setSpacing(1)
-        grid.setContentsMargins(0, 0, 0, 0)
-        row, col = 0, 0
+        """A reflowable ribbon group: a button grid plus an optional title."""
+        group = RibbonGroup(title, self.show_titles)
         for action in actions:
             if action.isSeparator():
-                if row:
-                    row, col = 0, col + 1
                 continue
             if isinstance(action, QWidgetAction):
-                btn = self._make_widget_button(action.defaultWidget(), labels, frame)
+                btn = self._make_widget_button(action.defaultWidget(), labels, group)
             else:
-                btn = self._make_action_button(action, labels, frame)
+                btn = self._make_action_button(action, labels, group)
             if btn is None:
                 continue
-            grid.addWidget(btn, row, col)
-            row += 1
-            if row >= self.rows:
-                row, col = 0, col + 1
-
-        vbox.addLayout(grid)
-        vbox.addStretch()
-        if self.show_titles:
-            label = QLabel(title)
-            label.setObjectName("ribbonGroupTitle")
-            label.setAlignment(Qt.AlignCenter)
-            vbox.addWidget(label)
-        return frame
+            group.add_button(btn)
+        group.reflow(self._cur_rows)
+        return group
 
     # ------------------------------------------------------------------
     # Buttons
@@ -523,8 +593,50 @@ class RibbonWidget(QTabWidget):
         btn.setMenu(menu)
         self.setCornerWidget(btn, Qt.TopRightCorner)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.auto_rows:
+            self._relayout_rows()
+
+    def _best_rows(self, avail):
+        """Fewest rows at which every tab's groups fit ``avail`` px wide."""
+        spacing = 2
+        for rows in range(1, self.max_rows + 1):
+            need = 0
+            for groups in self._tab_group_lists:
+                total = sum(g.width_at(rows) for g in groups)
+                total += spacing * max(len(groups) - 1, 0)
+                need = max(need, total)
+            if need <= avail:
+                return rows
+        return self.max_rows
+
+    def _relayout_rows(self):
+        """Pick the fewest rows whose groups still fit the current width, so
+        wide screens get a short one-row ribbon and narrow ones grow taller
+        before groups start collapsing into overflow."""
+        if not self._tab_group_lists or self.width() <= 0:
+            return
+        chosen = self._best_rows(self.width() - 8)
+
+        if chosen != self._cur_rows:
+            self._cur_rows = chosen
+            for groups in self._tab_group_lists:
+                for group in groups:
+                    group.reflow(chosen)
+            self._apply_fixed_height()
+            for i in range(self.count()):
+                page = self.widget(i)
+                if isinstance(page, AdaptiveTab):
+                    page.mark_dirty()
+
+        page = self.currentWidget()
+        if isinstance(page, AdaptiveTab):
+            page._relayout()
+
     def _apply_fixed_height(self):
-        content = self.rows * self.btn_height + (self.rows - 1) + 6
+        rows = self._cur_rows if self.auto_rows else self.max_rows
+        content = rows * self.btn_height + (rows - 1) + 6
         if self.show_titles:
             content += 14
         self.setFixedHeight(self.tabBar().sizeHint().height() + content + 4)

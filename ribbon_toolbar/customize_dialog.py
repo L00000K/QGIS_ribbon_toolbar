@@ -83,7 +83,7 @@ class CustomizeDialog(QDialog):
         vbox.addLayout(move_row)
 
         opts_row = QHBoxLayout()
-        opts_row.addWidget(QLabel("Button rows:"))
+        opts_row.addWidget(QLabel("Max rows:"))
         self.rows_spin = QSpinBox()
         self.rows_spin.setRange(1, 3)
         opts_row.addWidget(self.rows_spin)
@@ -94,10 +94,18 @@ class CustomizeDialog(QDialog):
         opts_row.addWidget(self.icon_spin)
         self.titles_check = QCheckBox("Show group titles")
         opts_row.addWidget(self.titles_check)
-        self.adaptive_check = QCheckBox("Adaptive (collapse groups when narrow)")
-        opts_row.addWidget(self.adaptive_check)
         opts_row.addStretch()
         vbox.addLayout(opts_row)
+
+        opts_row2 = QHBoxLayout()
+        self.autorows_check = QCheckBox("Auto rows (flatten on wide screens)")
+        opts_row2.addWidget(self.autorows_check)
+        self.spread_check = QCheckBox("Spread groups to fill width")
+        opts_row2.addWidget(self.spread_check)
+        self.adaptive_check = QCheckBox("Adaptive (collapse groups when narrow)")
+        opts_row2.addWidget(self.adaptive_check)
+        opts_row2.addStretch()
+        vbox.addLayout(opts_row2)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.RestoreDefaults
@@ -121,6 +129,8 @@ class CustomizeDialog(QDialog):
         self.icon_spin.setValue(layout_cfg.get("icon_size", 16))
         self.titles_check.setChecked(layout_cfg.get("show_group_titles", True))
         self.adaptive_check.setChecked(layout_cfg.get("adaptive", True))
+        self.autorows_check.setChecked(layout_cfg.get("auto_rows", True))
+        self.spread_check.setChecked(layout_cfg.get("spread", True))
 
         toolbars = collect_toolbars(self._main_window)
         menus = collect_menus(self._main_window)
@@ -235,6 +245,8 @@ class CustomizeDialog(QDialog):
             "icon_size": self.icon_spin.value(),
             "show_group_titles": self.titles_check.isChecked(),
             "adaptive": self.adaptive_check.isChecked(),
+            "auto_rows": self.autorows_check.isChecked(),
+            "spread": self.spread_check.isChecked(),
             "tabs": tabs,
         }
 

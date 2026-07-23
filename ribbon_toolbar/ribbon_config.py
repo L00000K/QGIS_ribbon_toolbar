@@ -92,6 +92,8 @@ def default_layout():
             "icon_size": 16,
             "show_group_titles": True,
             "adaptive": True,
+            "auto_rows": True,
+            "spread": True,
             "tabs": [
                 _tab(
                     "project",
@@ -274,6 +276,8 @@ def normalize_layout(layout):
         "icon_size": _clamp(layout.get("icon_size"), 12, 48, default["icon_size"]),
         "show_group_titles": bool(layout.get("show_group_titles", True)),
         "adaptive": bool(layout.get("adaptive", True)),
+        "auto_rows": bool(layout.get("auto_rows", True)),
+        "spread": bool(layout.get("spread", True)),
         "tabs": normalized_tabs,
     }
 

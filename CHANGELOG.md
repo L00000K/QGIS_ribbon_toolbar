@@ -24,9 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   catch-all tab is gone
 
 ### Added
-- Adaptive ribbon: when a tab's groups are wider than the window, the
-  rightmost groups collapse into an overflow (») dropdown and expand
-  back as the window widens; toggle in Customize Ribbon
+- Adaptive ribbon: on a wide screen it flattens to a single row and
+  spreads groups across the full width (less depth); as the window
+  narrows it adds rows (up to the configured maximum) and then collapses
+  the rightmost groups into an overflow (») dropdown. "Auto rows",
+  "Spread groups" and "Adaptive" each toggle in Customize Ribbon
 - Editable layout: tab order, groups, per-group label style, hidden
   actions and sizing are stored as JSON in the QGIS profile
   (`ribbon_toolbar/layout.json`)
