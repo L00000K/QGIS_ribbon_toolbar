@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.0] - 2026-07-17
 
 ### Changed
+- Group captions now run vertically up the left divider of each group by
+  default, removing the caption row and shaving depth; long names elide
+  to the group height. Choose Left / Bottom / Off in Customize Ribbon
 - Compact redesign: ribbon height roughly halved (small buttons in up to
   three configurable rows instead of 70 px fixed-size icon buttons)
 - Buttons size to their content — labels are never truncated

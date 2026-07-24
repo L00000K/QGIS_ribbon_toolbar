@@ -13,8 +13,8 @@ ribbon follows the active QGIS theme.
 import re
 
 from qgis.PyQt import sip
-from qgis.PyQt.QtCore import QSize, Qt, QTimer, pyqtSignal
-from qgis.PyQt.QtGui import QPalette
+from qgis.PyQt.QtCore import QRect, QSize, Qt, QTimer, pyqtSignal
+from qgis.PyQt.QtGui import QPainter, QPalette
 from qgis.PyQt.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -149,40 +149,94 @@ def resolve_groups(group_cfg, toolbars, menus, layout_cfg):
     return []
 
 
+class VerticalLabel(QWidget):
+    """A group caption drawn rotated 90° so it runs up the side divider.
+    Text is elided to the widget's height, so it degrades gracefully when
+    the group is short."""
+
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ribbonGroupTitle")
+        self._text = text or ""
+        font = self.font()
+        font.setPointSizeF(max(6.5, font.pointSizeF() - 2))
+        self.setFont(font)
+        self._thickness = self.fontMetrics().height() + 1
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        self.setMinimumHeight(0)
+
+    def sizeHint(self):
+        return QSize(self._thickness, 0)
+
+    def minimumSizeHint(self):
+        return QSize(self._thickness, 0)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        color = self.palette().color(QPalette.WindowText)
+        color.setAlpha(150)
+        painter.setPen(color)
+        painter.setFont(self.font())
+        painter.translate(0, self.height())
+        painter.rotate(-90)
+        elided = self.fontMetrics().elidedText(
+            self._text, Qt.ElideRight, max(0, self.height() - 4)
+        )
+        rect = QRect(0, 0, self.height(), self.width())
+        painter.drawText(rect, Qt.AlignCenter, elided)
+
+
 class RibbonGroup(QFrame):
     """A framed ribbon group whose buttons can be reflowed between 1 and N
     rows without rebuilding them. Reflowing lets the ribbon trade height
-    for width: one row is short and wide, more rows are tall and narrow."""
+    for width: one row is short and wide, more rows are tall and narrow.
+
+    The caption may sit under the buttons ("bottom"), run vertically up the
+    left divider ("left") or be hidden ("none")."""
 
     H_MARGIN = 3
     V_MARGIN = 1
     GRID_SPACING = 1
 
-    def __init__(self, title, show_title, parent=None):
+    def __init__(self, title, side, parent=None):
         super().__init__(parent)
         self.setObjectName("ribbonGroup")
         self._buttons = []
         self._widths = []
         self._rows = 0
+        self._caption_w = 0
+        self._extra_w = 0
 
-        vbox = QVBoxLayout(self)
-        vbox.setContentsMargins(
-            self.H_MARGIN, self.V_MARGIN, self.H_MARGIN, self.V_MARGIN
-        )
-        vbox.setSpacing(0)
         self._grid = QGridLayout()
         self._grid.setSpacing(self.GRID_SPACING)
         self._grid.setContentsMargins(0, 0, 0, 0)
-        vbox.addLayout(self._grid)
-        vbox.addStretch()
 
-        self._caption_w = 0
-        if show_title:
-            label = QLabel(title)
-            label.setObjectName("ribbonGroupTitle")
-            label.setAlignment(Qt.AlignCenter)
-            vbox.addWidget(label)
-            self._caption_w = label.sizeHint().width()
+        margins = (self.H_MARGIN, self.V_MARGIN, self.H_MARGIN, self.V_MARGIN)
+        if side == "left" and title:
+            grid_col = QVBoxLayout()
+            grid_col.setContentsMargins(0, 0, 0, 0)
+            grid_col.setSpacing(0)
+            grid_col.addLayout(self._grid)
+            grid_col.addStretch()
+            outer = QHBoxLayout(self)
+            outer.setContentsMargins(*margins)
+            outer.setSpacing(3)
+            vlabel = VerticalLabel(title)
+            outer.addWidget(vlabel)
+            outer.addLayout(grid_col)
+            self._extra_w = vlabel.sizeHint().width() + 3
+        else:
+            outer = QVBoxLayout(self)
+            outer.setContentsMargins(*margins)
+            outer.setSpacing(0)
+            outer.addLayout(self._grid)
+            outer.addStretch()
+            if side == "bottom" and title:
+                label = QLabel(title)
+                label.setObjectName("ribbonGroupTitle")
+                label.setAlignment(Qt.AlignCenter)
+                outer.addWidget(label)
+                self._caption_w = label.sizeHint().width()
 
     def add_button(self, btn):
         self._buttons.append(btn)
@@ -206,16 +260,16 @@ class RibbonGroup(QFrame):
         """Predicted frame width at ``rows`` rows, from stored button widths."""
         rows = max(1, rows)
         n = len(self._widths)
-        pad = 2 * self.H_MARGIN
+        pad = 2 * self.H_MARGIN + self._extra_w
         if n == 0:
-            return self._caption_w + pad
+            return pad + self._caption_w
         ncols = -(-n // rows)  # ceil division
         total = 0
         for c in range(ncols):
             col = self._widths[c * rows : (c + 1) * rows]
             total += max(col)
         total += self.GRID_SPACING * (ncols - 1) + pad
-        return max(total, self._caption_w + pad)
+        return max(total, self._caption_w + 2 * self.H_MARGIN)
 
 
 class OverflowPopup(QWidget):
@@ -376,6 +430,7 @@ class RibbonWidget(QTabWidget):
         self.icon_px = layout_cfg.get("icon_size", 16)
         self.btn_height = self.icon_px + 6
         self.show_titles = layout_cfg.get("show_group_titles", True)
+        self.title_side = layout_cfg.get("title_side", "left")
         self.adaptive = layout_cfg.get("adaptive", True)
         self.auto_rows = layout_cfg.get("auto_rows", True)
         self.spread = layout_cfg.get("spread", True)
@@ -583,9 +638,12 @@ class RibbonWidget(QTabWidget):
             kept.append(action)
         return kept
 
+    def _group_side(self):
+        return self.title_side if self.show_titles else "none"
+
     def _create_group(self, title, actions, labels):
         """A reflowable ribbon group: a button grid plus an optional title."""
-        group = RibbonGroup(title, self.show_titles)
+        group = RibbonGroup(title, self._group_side())
         for action in actions:
             if action.isSeparator():
                 continue
@@ -698,7 +756,7 @@ class RibbonWidget(QTabWidget):
 
     def _height_for(self, rows):
         content = rows * self.btn_height + (rows - 1) + 6
-        if self.show_titles:
+        if self.show_titles and self.title_side == "bottom":
             content += 14
         return self.tabBar().sizeHint().height() + content + 4
 
@@ -749,7 +807,7 @@ class RibbonWidget(QTabWidget):
             QTabBar::tab:hover:!selected {{ color: {accent}; }}
             QFrame#ribbonGroup {{
                 border: none;
-                border-right: 1px solid {divider};
+                border-{divider_side}: 1px solid {divider};
                 background: transparent;
             }}
             QLabel#ribbonGroupTitle {{
@@ -770,6 +828,7 @@ class RibbonWidget(QTabWidget):
             text=text.name(),
             accent=highlight.name(),
             divider=rgba(mid, 110),
+            divider_side="left" if self.title_side == "left" else "right",
             caption=rgba(text, 150),
             hover=rgba(highlight, 28),
             pressed=rgba(highlight, 55),

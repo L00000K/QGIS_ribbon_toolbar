@@ -103,6 +103,7 @@ def default_layout():
             "rows": 2,
             "icon_size": 16,
             "show_group_titles": True,
+            "title_side": "left",
             "adaptive": True,
             "auto_rows": True,
             "spread": True,
@@ -303,6 +304,11 @@ def normalize_layout(layout):
         "rows": _clamp(layout.get("rows"), 1, 3, default["rows"]),
         "icon_size": _clamp(layout.get("icon_size"), 12, 48, default["icon_size"]),
         "show_group_titles": bool(layout.get("show_group_titles", True)),
+        "title_side": (
+            layout.get("title_side")
+            if layout.get("title_side") in ("left", "bottom")
+            else "left"
+        ),
         "adaptive": bool(layout.get("adaptive", True)),
         "auto_rows": bool(layout.get("auto_rows", True)),
         "spread": bool(layout.get("spread", True)),

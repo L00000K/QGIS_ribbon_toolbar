@@ -13,6 +13,7 @@ A QGIS plugin that replaces the default menus and toolbars with a Microsoft Offi
 - Buttons size to their content, so labels are never cut off; actions with submenus become dropdown buttons automatically
 - Favorites tab: automatically surfaces your most-used and most-recently-used tools (usage is tracked across QGIS, not just the ribbon)
 - Per-tab auto height: two rows is the standard, but sparse tabs shrink to a single shallow row and dense tabs may use more, so each tab is only as deep as it needs to be
+- Group captions run vertically up the left divider by default (saving the depth of a caption row); switch to bottom captions or hide them in Customize Ribbon
 - Adaptive width: groups spread across the full width when they fit, and collapse into an overflow (») dropdown when the window is too narrow (Office / ArcGIS Pro style)
 - Fully editable layout: tab order, group order, per-group labels, hidden actions and sizing
 - Workflow-based grouping: Snapping and Annotations live on the Edit tab, Bookmarks and GPS on View, Labels on Layer

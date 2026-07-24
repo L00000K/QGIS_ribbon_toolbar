@@ -13,6 +13,7 @@ import copy
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -92,8 +93,17 @@ class CustomizeDialog(QDialog):
         self.icon_spin.setRange(12, 48)
         self.icon_spin.setSuffix(" px")
         opts_row.addWidget(self.icon_spin)
-        self.titles_check = QCheckBox("Show group titles")
-        opts_row.addWidget(self.titles_check)
+        opts_row.addWidget(QLabel("Group titles:"))
+        self.titles_combo = QComboBox()
+        # (label, show_group_titles, title_side)
+        self._title_modes = [
+            ("Left (vertical)", True, "left"),
+            ("Bottom", True, "bottom"),
+            ("Off", False, "left"),
+        ]
+        for label, _, _ in self._title_modes:
+            self.titles_combo.addItem(label)
+        opts_row.addWidget(self.titles_combo)
         opts_row.addStretch()
         vbox.addLayout(opts_row)
 
@@ -127,7 +137,12 @@ class CustomizeDialog(QDialog):
         self.tree.clear()
         self.rows_spin.setValue(layout_cfg.get("rows", 2))
         self.icon_spin.setValue(layout_cfg.get("icon_size", 16))
-        self.titles_check.setChecked(layout_cfg.get("show_group_titles", True))
+        show_titles = layout_cfg.get("show_group_titles", True)
+        side = layout_cfg.get("title_side", "left")
+        title_index = 2  # Off
+        if show_titles:
+            title_index = 1 if side == "bottom" else 0
+        self.titles_combo.setCurrentIndex(title_index)
         self.adaptive_check.setChecked(layout_cfg.get("adaptive", True))
         self.autorows_check.setChecked(layout_cfg.get("auto_rows", True))
         self.spread_check.setChecked(layout_cfg.get("spread", True))
@@ -252,7 +267,8 @@ class CustomizeDialog(QDialog):
             "version": CONFIG_VERSION,
             "rows": self.rows_spin.value(),
             "icon_size": self.icon_spin.value(),
-            "show_group_titles": self.titles_check.isChecked(),
+            "show_group_titles": self._title_modes[self.titles_combo.currentIndex()][1],
+            "title_side": self._title_modes[self.titles_combo.currentIndex()][2],
             "adaptive": self.adaptive_check.isChecked(),
             "auto_rows": self.autorows_check.isChecked(),
             "spread": self.spread_check.isChecked(),
