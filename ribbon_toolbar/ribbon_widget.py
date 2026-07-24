@@ -188,6 +188,9 @@ class RibbonGroup(QFrame):
         self._buttons.append(btn)
         self._widths.append(btn.sizeHint().width())
 
+    def button_count(self):
+        return len(self._buttons)
+
     def reflow(self, rows):
         rows = max(1, rows)
         if rows == self._rows or not self._buttons:
@@ -260,9 +263,6 @@ class AdaptiveTab(QWidget):
         self._spread = spread
         self._overflow_frames = []
         self._visible_count = -1
-        # Force a re-apply whenever the row count (and thus group widths)
-        # changed, even if the same number of groups still fit.
-        self._dirty = False
         self._hbox = QHBoxLayout(self)
         self._hbox.setContentsMargins(2, 1, 2, 1)
         self._hbox.setSpacing(spacing)
@@ -312,14 +312,9 @@ class AdaptiveTab(QWidget):
                     fit += 1
                 else:
                     break
-        if fit != self._visible_count or self._dirty:
+        if fit != self._visible_count:
             self._visible_count = fit
-            self._dirty = False
             self._apply(fit)
-
-    def mark_dirty(self):
-        """Flag that group widths changed, forcing the next relayout."""
-        self._dirty = True
 
     def _apply(self, fit):
         if self._popup.isVisible():
@@ -384,15 +379,16 @@ class RibbonWidget(QTabWidget):
         self.adaptive = layout_cfg.get("adaptive", True)
         self.auto_rows = layout_cfg.get("auto_rows", True)
         self.spread = layout_cfg.get("spread", True)
-        # Current row count; auto_rows flattens this on wide screens.
-        self._cur_rows = 1 if self.auto_rows else self.max_rows
-        # Group frames grouped per tab, for the auto-rows calculation.
-        self._tab_group_lists = []
+        # Index of every triggerable action (key -> QAction) and the
+        # usage tracker behind the Favorites tab.
+        self._action_index = {}
+        self._usage = None
         # Connections to long-lived QGIS objects, released in teardown()
         self._connections = []
         self.setStyleSheet(self._build_stylesheet())
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.setUsesScrollButtons(True)
+        self.currentChanged.connect(self._update_height)
         self._install_corner_menu()
 
     # ------------------------------------------------------------------
@@ -403,13 +399,56 @@ class RibbonWidget(QTabWidget):
         """Populate the ribbon from the layout configuration."""
         toolbars = collect_toolbars(self.main_window)
         menus = collect_menus(self.main_window)
+        self._build_usage_index(toolbars, menus)
         for tab_cfg in self.layout_cfg.get("tabs", []):
             if not tab_cfg.get("visible", True):
                 continue
             page = self._build_tab(tab_cfg, toolbars, menus)
             if page is not None:
                 self.addTab(page, self._tab_title(tab_cfg, menus))
-        self._apply_fixed_height()
+        self._update_height()
+
+    def _build_usage_index(self, toolbars, menus):
+        """Index all triggerable actions and record their usage globally, so
+        the Favorites tab reflects tools used anywhere in QGIS, not just here."""
+        from .ribbon_usage import UsageTracker
+
+        self._usage = UsageTracker()
+        index = {}
+        for tb in toolbars.values():
+            for action in tb.actions():
+                self._index_action(action, index)
+        for menu in menus.values():
+            self._index_menu(menu, index)
+        self._action_index = index
+        for key, action in index.items():
+            slot = self._usage_slot(key)
+            action.triggered.connect(slot)
+            self._connections.append((action.triggered, slot))
+
+    def _index_menu(self, menu, index, depth=0):
+        if depth > 4:
+            return
+        for action in menu.actions():
+            submenu = action.menu()
+            if submenu is not None:
+                self._index_menu(submenu, index, depth + 1)
+            else:
+                self._index_action(action, index)
+
+    def _index_action(self, action, index):
+        if action.isSeparator():
+            return
+        key = action_key(action)
+        if key and key not in index:
+            index[key] = action
+
+    def _usage_slot(self, key):
+        def record(checked=False, key=key):
+            if self._usage is not None:
+                self._usage.record(key)
+
+        return record
 
     def teardown(self):
         """Disconnect from external QGIS objects before deletion."""
@@ -429,8 +468,16 @@ class RibbonWidget(QTabWidget):
     def _build_tab(self, tab_cfg, toolbars, menus):
         seen_ids = set()
         frames = []
+        has_usage = False
         for group_cfg in tab_cfg.get("groups", []):
             if not group_cfg.get("visible", True):
+                continue
+            kind = group_cfg.get("kind")
+            if kind in ("frequent", "recent"):
+                has_usage = True
+                frame = self._build_usage_group(kind, group_cfg, seen_ids)
+                if frame is not None:
+                    frames.append(frame)
                 continue
             for resolved in resolve_groups(group_cfg, toolbars, menus, self.layout_cfg):
                 actions = self._filter_actions(resolved["actions"], group_cfg, seen_ids)
@@ -443,9 +490,17 @@ class RibbonWidget(QTabWidget):
                 )
 
         if not frames:
-            return None
+            return self._empty_favorites_page() if has_usage else None
 
-        self._tab_group_lists.append(frames)
+        rows = self._rows_for(frames)
+        for frame in frames:
+            frame.reflow(rows)
+
+        page = self._page_for_frames(frames)
+        page._rib_rows = rows
+        return page
+
+    def _page_for_frames(self, frames):
         if self.adaptive:
             return AdaptiveTab(frames, spread=self.spread)
 
@@ -465,6 +520,54 @@ class RibbonWidget(QTabWidget):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setWidget(container)
         return scroll
+
+    def _rows_for(self, frames):
+        """Per-tab row count: two rows is the standard, dropping to one for
+        sparse tabs and rising toward max_rows for very dense ones."""
+        if not self.auto_rows:
+            return self.max_rows
+        total = sum(f.button_count() for f in frames)
+        if total <= 8:
+            rows = 1
+        elif total <= 22:
+            rows = 2
+        else:
+            rows = 3
+        return max(1, min(self.max_rows, rows))
+
+    def _build_usage_group(self, kind, group_cfg, seen_ids):
+        # Frequently- and recently-used lists overlap heavily, so give each
+        # usage group its own dedup scope instead of the shared tab one.
+        actions = self._usage_actions(kind)
+        actions = self._filter_actions(actions, group_cfg, set())
+        if not actions:
+            return None
+        return self._create_group(
+            group_cfg.get("title") or kind.title(),
+            actions,
+            group_cfg.get("labels", True),
+        )
+
+    def _usage_actions(self, kind, count=12):
+        if self._usage is None:
+            return []
+        by = "count" if kind == "frequent" else "last"
+        keys = self._usage.top(count, by=by)
+        return [self._action_index[k] for k in keys if k in self._action_index]
+
+    def _empty_favorites_page(self):
+        page = QWidget()
+        box = QHBoxLayout(page)
+        box.setContentsMargins(8, 2, 8, 2)
+        hint = QLabel(
+            "Use some tools — the ones you use most and most recently "
+            "will appear here. Click ⚙ ▸ Refresh Ribbon to update."
+        )
+        hint.setObjectName("ribbonGroupTitle")
+        box.addWidget(hint)
+        box.addStretch()
+        page._rib_rows = 1
+        return page
 
     def _filter_actions(self, actions, group_cfg, seen_ids):
         """Drop hidden actions and duplicates already placed on this tab."""
@@ -493,7 +596,7 @@ class RibbonWidget(QTabWidget):
             if btn is None:
                 continue
             group.add_button(btn)
-        group.reflow(self._cur_rows)
+        group.reflow(self.max_rows)
         return group
 
     # ------------------------------------------------------------------
@@ -593,53 +696,18 @@ class RibbonWidget(QTabWidget):
         btn.setMenu(menu)
         self.setCornerWidget(btn, Qt.TopRightCorner)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.auto_rows:
-            self._relayout_rows()
-
-    def _best_rows(self, avail):
-        """Fewest rows at which every tab's groups fit ``avail`` px wide."""
-        spacing = 2
-        for rows in range(1, self.max_rows + 1):
-            need = 0
-            for groups in self._tab_group_lists:
-                total = sum(g.width_at(rows) for g in groups)
-                total += spacing * max(len(groups) - 1, 0)
-                need = max(need, total)
-            if need <= avail:
-                return rows
-        return self.max_rows
-
-    def _relayout_rows(self):
-        """Pick the fewest rows whose groups still fit the current width, so
-        wide screens get a short one-row ribbon and narrow ones grow taller
-        before groups start collapsing into overflow."""
-        if not self._tab_group_lists or self.width() <= 0:
-            return
-        chosen = self._best_rows(self.width() - 8)
-
-        if chosen != self._cur_rows:
-            self._cur_rows = chosen
-            for groups in self._tab_group_lists:
-                for group in groups:
-                    group.reflow(chosen)
-            self._apply_fixed_height()
-            for i in range(self.count()):
-                page = self.widget(i)
-                if isinstance(page, AdaptiveTab):
-                    page.mark_dirty()
-
-        page = self.currentWidget()
-        if isinstance(page, AdaptiveTab):
-            page._relayout()
-
-    def _apply_fixed_height(self):
-        rows = self._cur_rows if self.auto_rows else self.max_rows
+    def _height_for(self, rows):
         content = rows * self.btn_height + (rows - 1) + 6
         if self.show_titles:
             content += 14
-        self.setFixedHeight(self.tabBar().sizeHint().height() + content + 4)
+        return self.tabBar().sizeHint().height() + content + 4
+
+    def _update_height(self, *args):
+        """Size the ribbon to the current tab's row count, so a sparse tab
+        stays shallow and a dense one is allowed to be taller."""
+        page = self.currentWidget()
+        rows = getattr(page, "_rib_rows", self.max_rows)
+        self.setFixedHeight(self._height_for(rows))
 
     def _build_stylesheet(self):
         """Flat, ArcGIS Pro-like chrome derived from the app palette:

@@ -73,6 +73,18 @@ def _plugin_toolbars():
     }
 
 
+def _usage(kind, title):
+    return {
+        "kind": kind,  # "frequent" or "recent"
+        "source": None,
+        "match": None,
+        "title": title,
+        "labels": True,
+        "visible": True,
+        "hidden": [],
+    }
+
+
 def _tab(tab_id, title, menu=None, groups=()):
     return {
         "id": tab_id,
@@ -95,6 +107,15 @@ def default_layout():
             "auto_rows": True,
             "spread": True,
             "tabs": [
+                _tab(
+                    "favorites",
+                    "Favorites",
+                    None,
+                    [
+                        _usage("frequent", "Frequently Used"),
+                        _usage("recent", "Recently Used"),
+                    ],
+                ),
                 _tab(
                     "project",
                     "Project",
@@ -227,7 +248,14 @@ def _normalize_group(group):
     if not isinstance(group, dict):
         return None
     kind = group.get("kind")
-    if kind not in ("toolbar", "menu", "submenu", "plugin_toolbars"):
+    if kind not in (
+        "toolbar",
+        "menu",
+        "submenu",
+        "plugin_toolbars",
+        "frequent",
+        "recent",
+    ):
         return None
     if kind in ("toolbar", "menu", "submenu") and not group.get("source"):
         return None

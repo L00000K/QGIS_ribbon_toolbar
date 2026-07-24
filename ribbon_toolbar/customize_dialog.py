@@ -163,8 +163,17 @@ class CustomizeDialog(QDialog):
         group_item.setCheckState(1, _check(group_cfg.get("labels", False)))
         group_item.setData(0, GROUP_ROLE, group_cfg)
 
-        if group_cfg.get("kind") == "plugin_toolbars":
+        kind = group_cfg.get("kind")
+        if kind == "plugin_toolbars":
             group_item.setText(0, "Plugin toolbars (automatic)")
+            return
+        if kind in ("frequent", "recent"):
+            label = (
+                "Frequently used tools"
+                if kind == "frequent"
+                else "Recently used tools"
+            )
+            group_item.setText(0, "{} (automatic)".format(label))
             return
 
         resolved = resolve_groups(group_cfg, toolbars, menus, layout_cfg)

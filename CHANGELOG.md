@@ -24,11 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   catch-all tab is gone
 
 ### Added
-- Adaptive ribbon: on a wide screen it flattens to a single row and
-  spreads groups across the full width (less depth); as the window
-  narrows it adds rows (up to the configured maximum) and then collapses
-  the rightmost groups into an overflow (») dropdown. "Auto rows",
-  "Spread groups" and "Adaptive" each toggle in Customize Ribbon
+- Favorites tab: "Frequently Used" and "Recently Used" groups built from
+  tracked tool usage (recorded across QGIS, stored in the profile at
+  `ribbon_toolbar/usage.json`); refreshes on Refresh Ribbon / restart
+- Per-tab automatic height: two rows is the standard, sparse tabs shrink
+  to one row and very dense tabs may grow up to the maximum, so the
+  ribbon is only as deep as the current tab needs
+- Adaptive width: groups spread across the full width when they fit and
+  collapse into an overflow (») dropdown when the window is too narrow.
+  "Auto rows", "Spread groups" and "Adaptive" each toggle in Customize
+  Ribbon
 - Editable layout: tab order, groups, per-group label style, hidden
   actions and sizing are stored as JSON in the QGIS profile
   (`ribbon_toolbar/layout.json`)
